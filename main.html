@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>UmaniGo — Bannière 3D</title>
+<style>
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000000;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  #renderCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+
+<script src="js/babylon.js"></script>
+<script src="js/babylon.gui.js"></script>
+<script src="js/babylonjs.loaders.min.js"></script>
+<script>
+(function () {
+  var canvas = document.getElementById("renderCanvas");
+  var engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+
+  // Couleurs inspirées du logo UmaniGo
+  var BLUE = "#1D6FA5";
+  var BLUE_DARK = "#155A86";
+  var ORANGE = "#F2A71B";
+  var ORANGE_DARK = "#E07B00";
+
+  function createScene() {
+    var scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0, 0, 0, 1);
+
+    // Camera orbitale : l'utilisateur peut regarder autour, la bannière tourne d'elle-même
+    var camera = new BABYLON.ArcRotateCamera(
+      "camera",
+      -Math.PI / 2,
+      Math.PI / 2.4,
+      9,
+      new BABYLON.Vector3(0, 0.6, 0),
+      scene
+    );
+    camera.attachControl(canvas, true);
+    camera.lowerRadiusLimit = 5;
+    camera.upperRadiusLimit = 16;
+    camera.wheelDeltaPercentage = 0.01;
+    // Empêche de passer sous la scène : pas besoin de voir le dessous
+    camera.lowerBetaLimit = 0.35;
+    camera.upperBetaLimit = Math.PI / 2.05;
+
+    // Lumières douces façon pastel/crayon
+    var hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0, 1, 0), scene);
+    hemi.intensity = 1.0;
+    hemi.groundColor = BABYLON.Color3.FromHexString("#1a2a35");
+
+    var dir = new BABYLON.DirectionalLight("dir", new BABYLON.Vector3(-0.5, -1, 0.6), scene);
+    dir.intensity = 0.7;
+    dir.position = new BABYLON.Vector3(4, 8, -4);
+
+    // ---- Texture de la bannière : le vrai logo UmaniGo (umanigoLogo.jpg, 960x960) mappé sur le plan ----
+    var bannerTexture = new BABYLON.Texture("umanigoLogo.jpg", scene);
+    bannerTexture.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    bannerTexture.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+
+    // ---- Maillage de la bannière : un plan vertical, déjà orienté face caméra ----
+    var bannerWidth = 3.3;
+    var bannerHeight = bannerWidth; // logo carré (960x960)
+
+    var banner = BABYLON.MeshBuilder.CreatePlane("banner", {
+      width: bannerWidth,
+      height: bannerHeight,
+      sideOrientation: BABYLON.Mesh.DOUBLESIDE
+    }, scene);
+    banner.position.y = bannerHeight / 2 + 0.4;
+
+    var bannerMat = new BABYLON.StandardMaterial("bannerMat", scene);
+    bannerMat.diffuseTexture = bannerTexture;
+    bannerMat.specularColor = BABYLON.Color3.Black();
+    bannerMat.emissiveColor = new BABYLON.Color3(0.18, 0.18, 0.18);
+    bannerMat.backFaceCulling = false;
+    banner.material = bannerMat;
+
+    // Petit "mât" central décoratif
+    var pole = BABYLON.MeshBuilder.CreateCylinder("pole", {
+      height: bannerHeight + 1.2,
+      diameter: 0.06,
+      tessellation: 16
+    }, scene);
+    pole.position.y = (bannerHeight + 1.2) / 2 - 0.2;
+    var poleMat = new BABYLON.StandardMaterial("poleMat", scene);
+    poleMat.diffuseColor = BABYLON.Color3.FromHexString(BLUE_DARK);
+    poleMat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+    pole.material = poleMat;
+
+    // Regroupe bannière + mât dans un pivot pour la rotation d'ensemble
+    var pivot = new BABYLON.TransformNode("pivot", scene);
+    banner.parent = pivot;
+    pole.parent = pivot;
+
+    // ---- Petit outil : contour "crayon" façon dessin d'enfant (coque inversée agrandie) ----
+    function addCrayonOutline(mesh, parent, scale, colorHex) {
+      var outline = mesh.clone(mesh.name + "_outline");
+      outline.parent = parent;
+      outline.isPickable = false;
+      outline.scaling = mesh.scaling.multiply(new BABYLON.Vector3(scale, scale, scale));
+      outline.flipFaces(true);
+      var mat = new BABYLON.StandardMaterial(mesh.name + "_outlineMat", scene);
+      mat.emissiveColor = BABYLON.Color3.FromHexString(colorHex);
+      mat.diffuseColor = BABYLON.Color3.Black();
+      mat.specularColor = BABYLON.Color3.Black();
+      mat.disableLighting = true;
+      mat.backFaceCulling = true;
+      outline.material = mat;
+      return outline;
+    }
+
+    // ---- Globe façon crayon, avec continents griffonnés à la main ----
+    var globeRadius = 1.0;
+    var globeTexSize = 1024;
+    var globeTexture = new BABYLON.DynamicTexture("globeTexture", { width: globeTexSize, height: globeTexSize / 2 }, scene, false);
+    globeTexture.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    globeTexture.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    (function drawGlobeTexture() {
+      var gctx = globeTexture.getContext();
+      var gw = globeTexSize, gh = globeTexSize / 2;
+      gctx.fillStyle = "#fdfbf6";
+      gctx.fillRect(0, 0, gw, gh);
+
+      var blobs = [
+        { x: 0.15, y: 0.35, r: 0.16 },
+        { x: 0.32, y: 0.62, r: 0.12 },
+        { x: 0.55, y: 0.28, r: 0.14 },
+        { x: 0.74, y: 0.55, r: 0.17 },
+        { x: 0.92, y: 0.35, r: 0.1 }
+      ];
+      blobs.forEach(function (b, bi) {
+        gctx.fillStyle = "rgba(29, 111, 165, 0.75)";
+        for (var k = 0; k < 5; k++) {
+          var jx = ((bi * 37 + k * 13) % 11 - 5) * 6;
+          var jy = ((bi * 19 + k * 7) % 9 - 4) * 6;
+          gctx.beginPath();
+          gctx.arc(gw * b.x + jx, gh * b.y + jy, gw * b.r * (0.8 + 0.05 * k), 0, Math.PI * 2);
+          gctx.fill();
+        }
+        gctx.strokeStyle = BLUE_DARK;
+        gctx.lineWidth = 5;
+        gctx.beginPath();
+        gctx.arc(gw * b.x, gh * b.y, gw * b.r * 0.95, 0, Math.PI * 2);
+        gctx.stroke();
+      });
+
+      gctx.strokeStyle = "rgba(29, 111, 165, 0.25)";
+      gctx.lineWidth = 2;
+      for (var m = 1; m < 6; m++) {
+        gctx.beginPath();
+        gctx.ellipse(gw / 2, gh / 2, (gw / 2) * (m / 6), gh / 2, 0, 0, Math.PI * 2);
+        gctx.stroke();
+      }
+      for (var p = 1; p < 4; p++) {
+        gctx.beginPath();
+        gctx.moveTo(0, (gh / 4) * p);
+        gctx.lineTo(gw, (gh / 4) * p);
+        gctx.stroke();
+      }
+      globeTexture.update();
+    })();
+
+    var globe = BABYLON.MeshBuilder.CreateSphere("globe", { diameter: globeRadius * 2, segments: 24 }, scene);
+    var globeMat = new BABYLON.StandardMaterial("globeMat", scene);
+    globeMat.diffuseTexture = globeTexture;
+    globeMat.specularColor = BABYLON.Color3.Black();
+    globeMat.emissiveColor = new BABYLON.Color3(0.12, 0.12, 0.12);
+    globe.material = globeMat;
+
+    var poleBottomY = pole.position.y - (bannerHeight + 1.2) / 2;
+    var globeCenterY = poleBottomY - globeRadius;
+    globe.position.y = globeCenterY;
+    globe.parent = pivot;
+    addCrayonOutline(globe, pivot, 1.03, BLUE);
+
+    // ---- Enfants façon crayon, debout sur le globe, se tenant la main ----
+    function shortestArcQuaternion(from, to) {
+      var axis = BABYLON.Vector3.Cross(from, to);
+      var w = Math.sqrt(from.lengthSquared() * to.lengthSquared()) + BABYLON.Vector3.Dot(from, to);
+      if (w < 1e-6) {
+        return new BABYLON.Quaternion(1, 0, 0, 0);
+      }
+      var q = new BABYLON.Quaternion(axis.x, axis.y, axis.z, w);
+      q.normalize();
+      return q;
+    }
+
+    var kidsInfo = [
+      { skin: "#F2C9A1", hair: BLUE_DARK, shirt: ORANGE },
+      { skin: "#E3A66F", hair: "#5A3A22", shirt: BLUE },
+      { skin: "#8D5A3B", hair: "#2B1B12", shirt: "#D9A227" },
+      { skin: "#F7DFC0", hair: "#C9A227", shirt: "#C0392B" }
+    ];
+    var kidNodes = [];
+    var arcSpan = Math.PI * 0.6;
+    var poleAngle = Math.PI * 0.22;
+    var kidScale = 0.34;
+
+    kidsInfo.forEach(function (info, idx) {
+      var tFrac = kidsInfo.length > 1 ? idx / (kidsInfo.length - 1) : 0.5;
+      var angle = -arcSpan / 2 + tFrac * arcSpan;
+      var dir = new BABYLON.Vector3(
+        Math.sin(poleAngle) * Math.sin(angle),
+        Math.cos(poleAngle),
+        -Math.sin(poleAngle) * Math.cos(angle)
+      );
+      var footPos = dir.scale(globeRadius).add(new BABYLON.Vector3(0, globeCenterY, 0));
+
+      var kid = new BABYLON.TransformNode("kid" + idx, scene);
+      kid.parent = pivot;
+      kid.position = footPos;
+      kid.rotationQuaternion = shortestArcQuaternion(new BABYLON.Vector3(0, 1, 0), dir);
+
+      var body = BABYLON.MeshBuilder.CreateCylinder("kidBody" + idx, {
+        height: kidScale * 1.1,
+        diameterTop: kidScale * 0.55,
+        diameterBottom: kidScale * 0.7,
+        tessellation: 12
+      }, scene);
+      body.position = new BABYLON.Vector3(0, kidScale * 0.75, 0);
+      body.parent = kid;
+      var bodyMat = new BABYLON.StandardMaterial("kidBodyMat" + idx, scene);
+      bodyMat.diffuseColor = BABYLON.Color3.FromHexString(info.shirt);
+      bodyMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+      body.material = bodyMat;
+      addCrayonOutline(body, kid, 1.12, BLUE_DARK);
+
+      var head = BABYLON.MeshBuilder.CreateSphere("kidHead" + idx, { diameter: kidScale * 0.55, segments: 12 }, scene);
+      head.position = new BABYLON.Vector3(0, kidScale * 1.42, 0);
+      head.parent = kid;
+      var headMat = new BABYLON.StandardMaterial("kidHeadMat" + idx, scene);
+      headMat.diffuseColor = BABYLON.Color3.FromHexString(info.skin);
+      headMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+      head.material = headMat;
+      addCrayonOutline(head, kid, 1.15, BLUE_DARK);
+
+      var hair = BABYLON.MeshBuilder.CreateSphere("kidHair" + idx, { diameter: kidScale * 0.6, segments: 12, slice: 0.55 }, scene);
+      hair.position = new BABYLON.Vector3(0, kidScale * 1.55, 0);
+      hair.parent = kid;
+      var hairMat = new BABYLON.StandardMaterial("kidHairMat" + idx, scene);
+      hairMat.diffuseColor = BABYLON.Color3.FromHexString(info.hair);
+      hairMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+      hair.material = hairMat;
+
+      var legMat = new BABYLON.StandardMaterial("kidLegMat" + idx, scene);
+      legMat.diffuseColor = BABYLON.Color3.FromHexString(info.skin);
+      legMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+      [-1, 1].forEach(function (side) {
+        var leg = BABYLON.MeshBuilder.CreateCylinder("kidLeg" + idx + side, { height: kidScale * 0.5, diameter: kidScale * 0.16, tessellation: 8 }, scene);
+        leg.position = new BABYLON.Vector3(side * kidScale * 0.15, kidScale * 0.25, 0);
+        leg.parent = kid;
+        leg.material = legMat;
+      });
+
+      var armMat = new BABYLON.StandardMaterial("kidArmMat" + idx, scene);
+      armMat.diffuseColor = BABYLON.Color3.FromHexString(info.skin);
+      armMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+      [-1, 1].forEach(function (side) {
+        var arm = BABYLON.MeshBuilder.CreateCylinder("kidArm" + idx + side, { height: kidScale * 0.55, diameter: kidScale * 0.13, tessellation: 8 }, scene);
+        arm.position = new BABYLON.Vector3(side * kidScale * 0.42, kidScale * 0.95, 0);
+        arm.rotation.z = side * Math.PI * 0.32;
+        arm.parent = kid;
+        arm.material = armMat;
+      });
+
+      kidNodes.push({ footDir: dir });
+    });
+
+    // Petits liens "mains" reliant chaque enfant à son voisin
+    for (var ci = 0; ci < kidNodes.length - 1; ci++) {
+      var aPos = kidNodes[ci].footDir.scale(globeRadius + kidScale * 0.95).add(new BABYLON.Vector3(0, globeCenterY, 0));
+      var bPos = kidNodes[ci + 1].footDir.scale(globeRadius + kidScale * 0.95).add(new BABYLON.Vector3(0, globeCenterY, 0));
+      var mid = aPos.add(bPos).scale(0.5);
+      var handLink = BABYLON.MeshBuilder.CreateCylinder("handLink" + ci, {
+        height: BABYLON.Vector3.Distance(aPos, bPos),
+        diameter: 0.05,
+        tessellation: 8
+      }, scene);
+      handLink.parent = pivot;
+      handLink.position = mid;
+      handLink.rotationQuaternion = shortestArcQuaternion(new BABYLON.Vector3(0, 1, 0), bPos.subtract(aPos).normalize());
+      var handMat = new BABYLON.StandardMaterial("handMat" + ci, scene);
+      handMat.diffuseColor = BABYLON.Color3.FromHexString(BLUE_DARK);
+      handLink.material = handMat;
+    }
+
+    // ---- Animation ----
+    var t = 0;
+    scene.onBeforeRenderObservable.add(function () {
+      var dt = engine.getDeltaTime() / 1000;
+      t += dt;
+
+      // rotation continue de l'ensemble (bannière, mât, globe et enfants) autour du mât
+      pivot.rotation.y += dt * 0.5;
+      // léger balancement + respiration comme une bannière qui flotte
+      pivot.rotation.z = Math.sin(t * 0.8) * 0.03;
+      var breathe = 1 + Math.sin(t * 1.4) * 0.02;
+      banner.scaling.set(breathe, breathe, 1);
+    });
+
+    return scene;
+  }
+
+  var scene = createScene();
+
+  engine.runRenderLoop(function () {
+    scene.render();
+  });
+
+  window.addEventListener("resize", function () {
+    engine.resize();
+  });
+})();
+</script>
+</body>
+</html>

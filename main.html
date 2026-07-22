@@ -19,10 +19,29 @@
     display: block;
     touch-action: none;
   }
+  #construction {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #F2A71B;
+    font-weight: bold;
+    font-size: 16px;
+    text-align: center;
+    text-shadow: 0 0 8px rgba(242, 167, 27, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
+    user-select: none;
+    pointer-events: none;
+    animation: wiggle 2.4s ease-in-out infinite;
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: translateX(-50%) rotate(-1.5deg); }
+    50% { transform: translateX(-50%) rotate(1.5deg); }
+  }
 </style>
 </head>
 <body>
 <canvas id="renderCanvas"></canvas>
+<div id="construction">🚧 Chut... le vrai site est encore en chantier ! Nos développeurs creusent aussi vite qu'ils peuvent 🚧</div>
 
 <script src="js/babylon.js"></script>
 <script src="js/babylon.gui.js"></script>
